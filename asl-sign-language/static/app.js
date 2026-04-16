@@ -17,12 +17,14 @@ const showMaskedToggle = document.getElementById("showMaskedToggle");
 const maskedPreviewWrap = document.getElementById("maskedPreviewWrap");
 const maskedPreview = document.getElementById("maskedPreview");
 
+// Runtime state
 let fpsCount = 0;
 let lastFpsTick = Date.now();
 let activeStream = null;
 let frameInFlight = false;
 let pendingModelSwitch = null;
 
+// UI status helpers
 function setCameraStatus(message) {
   cameraStatus.textContent = message;
 }
@@ -39,6 +41,7 @@ function setModelSwitchingState(isSwitching) {
   retryBtn.disabled = isSwitching;
 }
 
+// Debug panel rendering
 function renderDebugScores(data) {
   if (!data.top_scores?.length) {
     debugReason.textContent = data.rejection_reason || "No inference yet.";
@@ -71,6 +74,7 @@ function renderMaskedPreview(data) {
   maskedPreviewWrap.classList.remove("hidden");
 }
 
+// Camera management
 function describeCameraError(err) {
   const errorMap = {
     NotAllowedError: "Camera permission was denied.",
@@ -84,6 +88,7 @@ function describeCameraError(err) {
   return `${prefix} (${err.name}: ${err.message})`;
 }
 
+// Landmark overlay rendering
 function resizeOverlayCanvas() {
   if (!video.videoWidth || !video.videoHeight) return;
   landmarkCanvas.width = video.videoWidth;
@@ -219,6 +224,7 @@ async function startCamera(deviceId = cameraSel.value) {
   maskedPreview.removeAttribute("src");
 }
 
+// Socket event handlers
 socket.on("connect", () => {
   frameInFlight = false;
   status.textContent = "Connected to server ✓";
@@ -269,6 +275,7 @@ socket.on("prediction", (data) => {
   }
 });
 
+// Frame capture loop
 function captureAndSend() {
   if (!socket.connected || !video.videoWidth || frameInFlight) return;
 
@@ -280,6 +287,7 @@ function captureAndSend() {
   socket.emit("video_frame", { frame: b64, model: modelSel.value });
 }
 
+// Browser event bindings
 video.addEventListener("loadedmetadata", resizeOverlayCanvas);
 window.addEventListener("resize", resizeOverlayCanvas);
 modelSel.addEventListener("change", () => {
@@ -304,6 +312,7 @@ showMaskedToggle.addEventListener("change", () => {
   }
 });
 
+// Initial state
 setInterval(captureAndSend, 200);
 modelSel.value = window.APP_CONFIG.defaultModel || modelSel.value;
 setModelSwitchingState(false);

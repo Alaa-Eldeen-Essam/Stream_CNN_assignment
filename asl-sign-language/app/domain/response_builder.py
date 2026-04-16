@@ -1,0 +1,26 @@
+def build_prediction_response(
+    model_key,
+    state,
+    hand_connections,
+    hand_detected=False,
+    landmarks=None,
+    bbox=None,
+    label="",
+    confidence=0.0,
+    top_scores=None,
+    rejection_reason="",
+    masked_preview="",
+):
+    return {
+        "state": state,
+        "label": label,
+        "confidence": round(float(confidence), 1),
+        "model": model_key,
+        "hand_detected": hand_detected,
+        "landmarks": landmarks or [],
+        "connections": hand_connections if landmarks else [],
+        "bbox": bbox,
+        "top_scores": top_scores or [],
+        "rejection_reason": rejection_reason,
+        "masked_preview": masked_preview,
+    }

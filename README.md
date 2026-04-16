@@ -7,10 +7,13 @@ Local live demo for static ASL letter recognition using MediaPipe hand detection
 - MediaPipe is mandatory for inference. If no valid hand is detected, the CNN does not run.
 - The browser shows the 21 MediaPipe landmarks, hand connections, and the detected hand box.
 - The webcam preview is mirrored for a natural selfie view.
+- The detected hand crop is converted to grayscale and background-masked from the MediaPipe landmarks before inference.
 - Predictions are conservative:
   - `No hand` when MediaPipe finds nothing usable
   - `Unsure` when the model is not stable/confident enough
   - a letter only after a valid hand crop and smoothed agreement
+- Live predictions also use a top-2 margin rejection rule to suppress ambiguous letters.
+- The UI includes an optional debug panel with the top-3 class scores and rejection reason.
 - The app is optimized for one-hand static letters only.
 - `J` and `Z` are intentionally unsupported because they require motion.
 
@@ -36,7 +39,7 @@ Stream_CNN_assignment/
     └── ASL_Sign_Language_CNN_Alaa.ipynb
 ```
 
-`mobilenetv2` is the default live model because it offers the best responsiveness for localhost demo use.
+`mobilenetv2` is the default live model because it offers the best responsiveness for localhost demo use. Only the stronger live-demo models are exposed in the selector; weak or unstable models are hidden from the UI.
 
 ## Quick Start
 
@@ -61,11 +64,13 @@ validate one hand + bounding box size
     ↓
 crop detected hand only
     ↓
-model-specific preprocessing
+landmark-based background mask
+    ↓
+grayscale-aligned preprocessing
     ↓
 CNN inference
     ↓
-confidence + smoothing gate
+confidence + top-2 margin + smoothing gate
     ↓
 No hand / Unsure / Predicted letter
 ```
@@ -88,6 +93,8 @@ Prediction payload fields:
 - `landmarks`
 - `connections`
 - `bbox`
+- `top_scores`
+- `rejection_reason`
 
 ## Known Limitations
 
@@ -95,6 +102,7 @@ Prediction payload fields:
 - Busy backgrounds, poor lighting, and partial hands reduce stability.
 - The demo is optimized for localhost and a laptop webcam, not production deployment.
 - Models are lazy-loaded after startup except for the default model.
+- Background masking helps, but the models are still trained on Sign Language MNIST style data rather than true webcam data.
 
 ## Requirements
 

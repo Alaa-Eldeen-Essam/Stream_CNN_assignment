@@ -182,6 +182,15 @@ def serialize_landmarks(landmarks):
     return [{"x": float(lm.x), "y": float(lm.y)} for lm in landmarks.landmark]
 
 
+def crop_relative_points(landmarks, x1, y1, frame_h, frame_w):
+    points = []
+    for lm in landmarks.landmark:
+        px = int(round(lm.x * frame_w)) - x1
+        py = int(round(lm.y * frame_h)) - y1
+        points.append((px, py))
+    return points
+
+
 def get_hand_bbox(landmarks, frame_h, frame_w, pad=20):
     xs = [lm.x * frame_w for lm in landmarks.landmark]
     ys = [lm.y * frame_h for lm in landmarks.landmark]
@@ -226,19 +235,58 @@ def detect_hand(frame_bgr):
     if crop.size == 0:
         return None
 
+    hand_points = crop_relative_points(landmarks, x1, y1, frame_h, frame_w)
+
     return {
         "crop": crop,
+        "hand_points": hand_points,
         "landmarks": serialize_landmarks(landmarks),
         "bbox": normalize_bbox(x1, y1, x2, y2, frame_h, frame_w),
     }
 
 
-def preprocess_crop(crop_bgr, model_key):
+def build_hand_mask(shape, hand_points):
+    crop_h, crop_w = shape[:2]
+    mask = np.zeros((crop_h, crop_w), dtype=np.uint8)
+    if not hand_points:
+        return mask
+
+    points = np.array(
+        [
+            [np.clip(px, 0, crop_w - 1), np.clip(py, 0, crop_h - 1)]
+            for px, py in hand_points
+        ],
+        dtype=np.int32,
+    )
+    if len(points) >= 3:
+        hull = cv2.convexHull(points)
+        cv2.fillConvexPoly(mask, hull, 255)
+
+    scale = max(crop_h, crop_w)
+    line_thickness = max(4, int(scale * 0.05))
+    joint_radius = max(4, int(scale * 0.035))
+    dilation = max(3, int(scale * 0.04))
+
+    for start_idx, end_idx in HAND_CONNECTIONS:
+        start = tuple(points[start_idx])
+        end = tuple(points[end_idx])
+        cv2.line(mask, start, end, 255, thickness=line_thickness)
+
+    for point in points:
+        cv2.circle(mask, tuple(point), joint_radius, 255, thickness=-1)
+
+    kernel = np.ones((dilation, dilation), dtype=np.uint8)
+    return cv2.dilate(mask, kernel, iterations=1)
+
+
+def preprocess_crop(crop_bgr, hand_points, model_key):
     cfg = MODEL_REGISTRY[model_key]
     target_w, target_h = cfg["input_size"]
 
     gray_crop = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
-    resized_gray = cv2.resize(gray_crop, (target_w, target_h))
+    hand_mask = build_hand_mask(crop_bgr.shape, hand_points)
+    masked_gray = cv2.bitwise_and(gray_crop, gray_crop, mask=hand_mask)
+    resized_gray = cv2.resize(masked_gray, (target_w, target_h))
     resized = np.stack([resized_gray, resized_gray, resized_gray], axis=-1)
     inp = resized.reshape(1, target_h, target_w, 3).astype("float32")
 
@@ -306,7 +354,7 @@ def run_prediction(frame_bgr, requested_model, client_id):
         prediction_histories[client_id].clear()
         return base_response(model_key, "no_hand")
 
-    inp = preprocess_crop(detection["crop"], model_key)
+    inp = preprocess_crop(detection["crop"], detection["hand_points"], model_key)
     preds = model.predict(inp, verbose=0)
     sorted_indices = np.argsort(preds[0])[::-1]
     idx = int(sorted_indices[0])

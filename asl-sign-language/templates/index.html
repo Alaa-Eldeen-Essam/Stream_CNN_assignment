@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ASL Sign Language Recognition</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  <script>
+    window.APP_CONFIG = {
+      defaultModel: {{ default_model|tojson }},
+    };
+  </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <h1>🤟 ASL Sign Language Recognition</h1>
+
+    <section class="video-panel">
+      <div id="video-container">
+        <video id="video" autoplay playsinline muted></video>
+        <canvas id="landmarkCanvas"></canvas>
+        <div id="overlay" class="overlay overlay-idle">No hand</div>
+      </div>
+    </section>
+
+    <section id="controls">
+      <select id="modelSelect">
+        {% for key in models %}
+        <option value="{{ key }}" {% if key == default_model %}selected{% endif %}>
+          {{ key }}{% if key == default_model %} (default){% endif %}
+        </option>
+        {% endfor %}
+      </select>
+      <select id="cameraSelect">
+        <option value="">Default camera</option>
+      </select>
+      <button id="retryCamera" type="button">Retry camera</button>
+      <span class="badge" id="fps-counter">0 fps</span>
+    </section>
+
+    <section class="status-stack">
+      <p id="status">Connecting to server...</p>
+      <p id="camera-status">Starting camera...</p>
+    </section>
+  </main>
+
+  <canvas id="captureCanvas" hidden></canvas>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

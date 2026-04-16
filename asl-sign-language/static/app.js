@@ -11,6 +11,8 @@ const fpsEl = document.getElementById("fps-counter");
 const modelSel = document.getElementById("modelSelect");
 const cameraSel = document.getElementById("cameraSelect");
 const retryBtn = document.getElementById("retryCamera");
+const debugReason = document.getElementById("debugReason");
+const debugScores = document.getElementById("debugScores");
 
 let fpsCount = 0;
 let lastFpsTick = Date.now();
@@ -32,6 +34,27 @@ function setModelSwitchingState(isSwitching) {
   modelSel.disabled = isSwitching;
   cameraSel.disabled = isSwitching;
   retryBtn.disabled = isSwitching;
+}
+
+function renderDebugScores(data) {
+  if (!data.top_scores?.length) {
+    debugReason.textContent = data.rejection_reason || "No inference yet.";
+    debugScores.innerHTML = "";
+    return;
+  }
+
+  debugReason.textContent = data.rejection_reason || `Serving ${data.model}`;
+  debugScores.innerHTML = data.top_scores
+    .map(
+      (item, index) => `
+        <div class="debug-score-row">
+          <span class="debug-rank">#${index + 1}</span>
+          <span class="debug-label">${item.label}</span>
+          <span class="debug-value">${item.confidence.toFixed(1)}%</span>
+        </div>
+      `,
+    )
+    .join("");
 }
 
 function describeCameraError(err) {
@@ -176,6 +199,8 @@ async function startCamera(deviceId = cameraSel.value) {
   clearOverlayDrawing();
   setOverlayState("no-hand", "No hand");
   setCameraStatus(`Camera error: ${describeCameraError(lastError)}`);
+  debugReason.textContent = "Camera not ready.";
+  debugScores.innerHTML = "";
 }
 
 socket.on("connect", () => {
@@ -188,11 +213,14 @@ socket.on("disconnect", () => {
   pendingModelSwitch = null;
   setModelSwitchingState(false);
   status.textContent = "Disconnected";
+  debugReason.textContent = "Disconnected from server.";
+  debugScores.innerHTML = "";
 });
 
 socket.on("prediction", (data) => {
   frameInFlight = false;
   drawLandmarks(data.landmarks, data.connections, data.bbox);
+  renderDebugScores(data);
 
   if (pendingModelSwitch) {
     if (data.model === pendingModelSwitch) {
@@ -254,4 +282,5 @@ setInterval(captureAndSend, 200);
 modelSel.value = window.APP_CONFIG.defaultModel || modelSel.value;
 setModelSwitchingState(false);
 setOverlayState("idle", "No hand");
+debugReason.textContent = "No inference yet.";
 startCamera();

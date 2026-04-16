@@ -31,6 +31,7 @@ PROJECT_ROOT = BASE_DIR.parent
 DEFAULT_MODEL = "mobilenetv2"
 MIN_BOX_SIDE_RATIO = 0.12
 PREDICTION_THRESHOLD = 75.0
+TOP2_MARGIN_THRESHOLD = 18.0
 SMOOTHING_WINDOW = 4
 SMOOTHING_MIN_AGREEMENT = 3
 
@@ -80,30 +81,35 @@ MODEL_REGISTRY = {
         "input_size": (227, 227),
         "color": "rgb",
         "preprocess": None,
+        "live_enabled": True,
     },
     "resnet50": {
         "file": "resnet50_sign.h5",
         "input_size": (224, 224),
         "color": "rgb",
         "preprocess": applications.resnet50.preprocess_input,
+        "live_enabled": False,
     },
     "vgg16": {
         "file": "vgg16_sign.h5",
         "input_size": (224, 224),
         "color": "rgb",
         "preprocess": applications.vgg16.preprocess_input,
+        "live_enabled": False,
     },
     "mobilenetv2": {
         "file": "mobilenetv2_sign.h5",
         "input_size": (96, 96),
         "color": "rgb",
         "preprocess": applications.mobilenet_v2.preprocess_input,
+        "live_enabled": True,
     },
     "efficientnetb0": {
         "file": "efficientnetb0_sign.h5",
         "input_size": (224, 224),
         "color": "rgb",
         "preprocess": None,
+        "live_enabled": True,
     },
 }
 
@@ -127,14 +133,29 @@ def discover_model_paths():
 
 
 def get_available_models():
-    preferred = [DEFAULT_MODEL] if DEFAULT_MODEL in available_model_paths else []
-    others = [key for key in MODEL_REGISTRY if key in available_model_paths and key != DEFAULT_MODEL]
+    preferred = [
+        DEFAULT_MODEL
+        if DEFAULT_MODEL in available_model_paths and MODEL_REGISTRY[DEFAULT_MODEL].get("live_enabled", True)
+        else None
+    ]
+    others = [
+        key
+        for key in MODEL_REGISTRY
+        if key in available_model_paths
+        and key != DEFAULT_MODEL
+        and MODEL_REGISTRY[key].get("live_enabled", True)
+    ]
+    preferred = [key for key in preferred if key]
     return preferred + others
 
 
 def load_model_if_needed(model_key):
     """Load a model on demand and cache it for future requests."""
-    key = model_key if model_key in available_model_paths else None
+    key = (
+        model_key
+        if model_key in available_model_paths and MODEL_REGISTRY[model_key].get("live_enabled", True)
+        else None
+    )
     if key is None:
         available = get_available_models()
         if not available:
@@ -216,8 +237,9 @@ def preprocess_crop(crop_bgr, model_key):
     cfg = MODEL_REGISTRY[model_key]
     target_w, target_h = cfg["input_size"]
 
-    rgb_crop = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
-    resized = cv2.resize(rgb_crop, (target_w, target_h))
+    gray_crop = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2GRAY)
+    resized_gray = cv2.resize(gray_crop, (target_w, target_h))
+    resized = np.stack([resized_gray, resized_gray, resized_gray], axis=-1)
     inp = resized.reshape(1, target_h, target_w, 3).astype("float32")
 
     if model_key == "efficientnetb0":
@@ -227,7 +249,25 @@ def preprocess_crop(crop_bgr, model_key):
     return inp / 255.0
 
 
-def base_response(model_key, state, hand_detected=False, landmarks=None, bbox=None, label="", confidence=0.0):
+def top_predictions(preds, limit=3):
+    top_indices = np.argsort(preds)[::-1][:limit]
+    return [
+        {"label": IDX_TO_LETTER.get(int(idx), "?"), "confidence": round(float(preds[idx]) * 100, 1)}
+        for idx in top_indices
+    ]
+
+
+def base_response(
+    model_key,
+    state,
+    hand_detected=False,
+    landmarks=None,
+    bbox=None,
+    label="",
+    confidence=0.0,
+    top_scores=None,
+    rejection_reason="",
+):
     return {
         "state": state,
         "label": label,
@@ -237,6 +277,8 @@ def base_response(model_key, state, hand_detected=False, landmarks=None, bbox=No
         "landmarks": landmarks or [],
         "connections": HAND_CONNECTIONS if landmarks else [],
         "bbox": bbox,
+        "top_scores": top_scores or [],
+        "rejection_reason": rejection_reason,
     }
 
 
@@ -266,15 +308,27 @@ def run_prediction(frame_bgr, requested_model, client_id):
 
     inp = preprocess_crop(detection["crop"], model_key)
     preds = model.predict(inp, verbose=0)
-    idx = int(np.argmax(preds[0]))
+    sorted_indices = np.argsort(preds[0])[::-1]
+    idx = int(sorted_indices[0])
     conf = float(preds[0][idx]) * 100
     label = IDX_TO_LETTER.get(idx, "?")
+    second_conf = float(preds[0][sorted_indices[1]]) * 100 if len(sorted_indices) > 1 else 0.0
+    margin = conf - second_conf
+    top_scores = top_predictions(preds[0])
 
     history = prediction_histories[client_id]
     history.append((label, conf))
     stable = stable_prediction(history)
 
-    if conf < PREDICTION_THRESHOLD or stable is None:
+    rejection_reason = ""
+    if conf < PREDICTION_THRESHOLD:
+        rejection_reason = "Low confidence"
+    elif margin < TOP2_MARGIN_THRESHOLD:
+        rejection_reason = "Top-2 margin too small"
+    elif stable is None:
+        rejection_reason = "Waiting for stable frames"
+
+    if rejection_reason:
         return base_response(
             model_key,
             "unsure",
@@ -283,6 +337,8 @@ def run_prediction(frame_bgr, requested_model, client_id):
             bbox=detection["bbox"],
             label=label,
             confidence=conf,
+            top_scores=top_scores,
+            rejection_reason=rejection_reason,
         )
 
     stable_label, stable_conf = stable
@@ -294,6 +350,7 @@ def run_prediction(frame_bgr, requested_model, client_id):
         bbox=detection["bbox"],
         label=stable_label,
         confidence=stable_conf,
+        top_scores=top_scores,
     )
 
 

@@ -1,6 +1,6 @@
 from tensorflow.keras import applications
 
-DEFAULT_MODEL = "mobilenetv2"
+DEFAULT_MODEL = "efficientnetb0"
 MIN_BOX_SIDE_RATIO = 0.12
 PREDICTION_THRESHOLD = 75.0
 TOP2_MARGIN_THRESHOLD = 18.0

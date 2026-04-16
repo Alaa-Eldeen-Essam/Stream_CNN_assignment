@@ -31,7 +31,15 @@ Stream_CNN_assignment/
 |   |   |-- domain/
 |   |   `-- utils/
 |   |-- static/
-|   |   |-- app.js
+|   |   |-- js/
+|   |   |   |-- main.js
+|   |   |   |-- config.js
+|   |   |   |-- controllers/
+|   |   |   |-- models/
+|   |   |   |-- services/
+|   |   |   |-- state/
+|   |   |   |-- utils/
+|   |   |   `-- views/
 |   |   `-- styles.css
 |   `-- templates/
 |       `-- index.html
@@ -54,6 +62,16 @@ The backend now follows a pragmatic Flask MVC-style layout:
 - Small shared helpers live in `app/utils/`.
 
 `server_cnn.py` is kept as a compatibility entrypoint. The preferred entrypoint is `run.py`.
+
+The frontend is plain HTML/CSS/JavaScript with ES modules:
+
+- `static/js/main.js` bootstraps the browser app.
+- `static/js/controllers/` coordinates camera, model switching, predictions, and frame sending.
+- `static/js/services/` wraps browser APIs and Socket.IO.
+- `static/js/views/` owns DOM and canvas rendering.
+- `static/js/models/` normalizes backend prediction payloads before rendering.
+- `static/js/state/` owns mutable runtime state.
+- `static/js/utils/dom.js` is the only place that looks up DOM elements directly.
 
 ## Quick Start
 
@@ -132,6 +150,8 @@ Prediction payload fields:
 - `HandDetectionService` owns MediaPipe setup, one-hand detection, landmark serialization, and bounding-box validation.
 - `InferenceService` owns masking, preprocessing, model prediction, smoothing, top-2 rejection, and response assembly.
 - Socket.IO handlers remain thin and only decode frames, delegate to services, and emit prediction payloads.
+- Frontend controllers remain thin and delegate DOM rendering to views, browser APIs to services, and mutable values to `AppState`.
+- Prediction payloads are normalized in the frontend before rendering, so missing fields do not break the UI.
 - The refactor is structural only; routes, event names, payload fields, and UI behavior are intentionally preserved.
 
 ## Known Limitations

@@ -14,7 +14,7 @@
 </head>
 <body>
   <main class="app-shell">
-    <h1>🤟 ASL Sign Language Recognition</h1>
+    <h1>ASL Sign Language Recognition</h1>
 
     <section class="video-panel">
       <div id="video-container">
@@ -60,6 +60,6 @@
   </main>
 
   <canvas id="captureCanvas" hidden></canvas>
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
 </body>
 </html>

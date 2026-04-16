@@ -291,10 +291,10 @@ def preprocess_crop(crop_bgr, hand_points, model_key):
     inp = resized.reshape(1, target_h, target_w, 3).astype("float32")
 
     if model_key == "efficientnetb0":
-        return inp
+        return inp, masked_gray
     if cfg["preprocess"] is not None:
-        return cfg["preprocess"](inp)
-    return inp / 255.0
+        return cfg["preprocess"](inp), masked_gray
+    return inp / 255.0, masked_gray
 
 
 def top_predictions(preds, limit=3):
@@ -303,6 +303,13 @@ def top_predictions(preds, limit=3):
         {"label": IDX_TO_LETTER.get(int(idx), "?"), "confidence": round(float(preds[idx]) * 100, 1)}
         for idx in top_indices
     ]
+
+
+def encode_preview_image(image):
+    success, buf = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 85])
+    if not success:
+        return ""
+    return f"data:image/jpeg;base64,{base64.b64encode(buf.tobytes()).decode('ascii')}"
 
 
 def base_response(
@@ -315,6 +322,7 @@ def base_response(
     confidence=0.0,
     top_scores=None,
     rejection_reason="",
+    masked_preview="",
 ):
     return {
         "state": state,
@@ -327,6 +335,7 @@ def base_response(
         "bbox": bbox,
         "top_scores": top_scores or [],
         "rejection_reason": rejection_reason,
+        "masked_preview": masked_preview,
     }
 
 
@@ -354,7 +363,7 @@ def run_prediction(frame_bgr, requested_model, client_id):
         prediction_histories[client_id].clear()
         return base_response(model_key, "no_hand")
 
-    inp = preprocess_crop(detection["crop"], detection["hand_points"], model_key)
+    inp, masked_gray = preprocess_crop(detection["crop"], detection["hand_points"], model_key)
     preds = model.predict(inp, verbose=0)
     sorted_indices = np.argsort(preds[0])[::-1]
     idx = int(sorted_indices[0])
@@ -363,6 +372,7 @@ def run_prediction(frame_bgr, requested_model, client_id):
     second_conf = float(preds[0][sorted_indices[1]]) * 100 if len(sorted_indices) > 1 else 0.0
     margin = conf - second_conf
     top_scores = top_predictions(preds[0])
+    masked_preview = encode_preview_image(masked_gray)
 
     history = prediction_histories[client_id]
     history.append((label, conf))
@@ -387,6 +397,7 @@ def run_prediction(frame_bgr, requested_model, client_id):
             confidence=conf,
             top_scores=top_scores,
             rejection_reason=rejection_reason,
+            masked_preview=masked_preview,
         )
 
     stable_label, stable_conf = stable
@@ -399,6 +410,7 @@ def run_prediction(frame_bgr, requested_model, client_id):
         label=stable_label,
         confidence=stable_conf,
         top_scores=top_scores,
+        masked_preview=masked_preview,
     )
 
 

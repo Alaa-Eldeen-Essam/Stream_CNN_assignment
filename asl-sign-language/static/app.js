@@ -13,6 +13,9 @@ const cameraSel = document.getElementById("cameraSelect");
 const retryBtn = document.getElementById("retryCamera");
 const debugReason = document.getElementById("debugReason");
 const debugScores = document.getElementById("debugScores");
+const showMaskedToggle = document.getElementById("showMaskedToggle");
+const maskedPreviewWrap = document.getElementById("maskedPreviewWrap");
+const maskedPreview = document.getElementById("maskedPreview");
 
 let fpsCount = 0;
 let lastFpsTick = Date.now();
@@ -55,6 +58,17 @@ function renderDebugScores(data) {
       `,
     )
     .join("");
+}
+
+function renderMaskedPreview(data) {
+  if (!showMaskedToggle.checked || !data.masked_preview) {
+    maskedPreviewWrap.classList.add("hidden");
+    maskedPreview.removeAttribute("src");
+    return;
+  }
+
+  maskedPreview.src = data.masked_preview;
+  maskedPreviewWrap.classList.remove("hidden");
 }
 
 function describeCameraError(err) {
@@ -201,6 +215,8 @@ async function startCamera(deviceId = cameraSel.value) {
   setCameraStatus(`Camera error: ${describeCameraError(lastError)}`);
   debugReason.textContent = "Camera not ready.";
   debugScores.innerHTML = "";
+  maskedPreviewWrap.classList.add("hidden");
+  maskedPreview.removeAttribute("src");
 }
 
 socket.on("connect", () => {
@@ -215,12 +231,15 @@ socket.on("disconnect", () => {
   status.textContent = "Disconnected";
   debugReason.textContent = "Disconnected from server.";
   debugScores.innerHTML = "";
+  maskedPreviewWrap.classList.add("hidden");
+  maskedPreview.removeAttribute("src");
 });
 
 socket.on("prediction", (data) => {
   frameInFlight = false;
   drawLandmarks(data.landmarks, data.connections, data.bbox);
   renderDebugScores(data);
+  renderMaskedPreview(data);
 
   if (pendingModelSwitch) {
     if (data.model === pendingModelSwitch) {
@@ -270,6 +289,8 @@ modelSel.addEventListener("change", () => {
   setModelSwitchingState(true);
   setOverlayState("loading", `Loading ${pendingModelSwitch}...`);
   status.textContent = `Loading model: ${pendingModelSwitch}...`;
+  maskedPreviewWrap.classList.add("hidden");
+  maskedPreview.removeAttribute("src");
 });
 cameraSel.addEventListener("change", () => {
   startCamera(cameraSel.value);
@@ -277,10 +298,16 @@ cameraSel.addEventListener("change", () => {
 retryBtn.addEventListener("click", () => {
   startCamera(cameraSel.value);
 });
+showMaskedToggle.addEventListener("change", () => {
+  if (!showMaskedToggle.checked) {
+    maskedPreviewWrap.classList.add("hidden");
+  }
+});
 
 setInterval(captureAndSend, 200);
 modelSel.value = window.APP_CONFIG.defaultModel || modelSel.value;
 setModelSwitchingState(false);
 setOverlayState("idle", "No hand");
 debugReason.textContent = "No inference yet.";
+maskedPreviewWrap.classList.add("hidden");
 startCamera();

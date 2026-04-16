@@ -46,8 +46,16 @@
 
     <details class="debug-panel">
       <summary>Debug scores</summary>
+      <label class="debug-toggle">
+        <input id="showMaskedToggle" type="checkbox">
+        Show masked crop preview
+      </label>
       <p id="debugReason">No inference yet.</p>
       <div id="debugScores" class="debug-scores"></div>
+      <div id="maskedPreviewWrap" class="masked-preview-wrap hidden">
+        <p class="masked-preview-title">Masked crop sent to model</p>
+        <img id="maskedPreview" alt="Masked crop preview">
+      </div>
     </details>
   </main>
 
